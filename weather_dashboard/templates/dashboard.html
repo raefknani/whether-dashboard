@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Dashboard</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Weather Dashboard</h1>
+        <form method="POST">
+            <input type="text" name="city" placeholder="Enter city" required>
+            <button type="submit">Search</button>
+        </form>
+
+        {% if error_message %}
+        <div class="error-message">
+            <p>{{ error_message }}</p>
+        </div>
+        {% endif %}
+
+        {% if weather_data %}
+        <div class="weather-info">
+            <h2>{{ weather_data.city }}</h2>
+            <p><strong>Current Temperature:</strong> {{ weather_data.temperature }}°C</p>
+            <p><strong>Pressure:</strong> {{ weather_data.pressure }} hPa</p>
+            <p><strong>Wind Speed:</strong> {{ weather_data.wind_speed }} m/s</p>
+            <p><strong>Wind Direction:</strong> {{ weather_data.wind_direction }}°</p>
+            <p><strong>UV Index:</strong> {{ weather_data.uv_index }}</p>
+        </div>
+
+        <div class="hourly-forecast-widget">
+            <h3>Hourly Forecast</h3>
+            <div class="forecast-container">
+                {% for forecast in weather_data.hourly_forecast %}
+                <div class="forecast-item">
+                    <p>{{ forecast.time }}</p>
+                    <img src="{{ forecast.icon_url }}" alt="Weather Icon">
+                    <p>{{ forecast.temp }}°</p>
+                </div>
+                {% else %}
+                <p>No forecast data available.</p>
+                {% endfor %}
+            </div>
+        </div>
+        
+        
+
+        <div class="chart-container">
+            <h3>Temperature Trend</h3>
+            <canvas id="temperatureChart"></canvas>
+        </div>
+        {% endif %}
+    
+
+    {% if weather_data %}
+    <script>
+        // Pass hourly forecast data from Python to JavaScript
+        const labels = {{ weather_data.hourly_forecast | map(attribute='time') | list | tojson }};
+        const data = {{ weather_data.hourly_forecast | map(attribute='temp') | list | tojson }};
+
+        const ctx = document.getElementById('temperatureChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: data,
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        display: true
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Temperature (°C)'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+    
+        <!-- Wind Speed and Direction Gauge -->
+        <div class="widget">
+            <div class="gauge-title">Wind Speed & Direction</div>
+            <svg id="windGauge" width="400" height="400"></svg>
+            <p id="windDetails"></p>
+        </div>
+    </div>
+
+    <script>
+        const windSpeed = {{ weather_data.wind_speed }};
+        const windDirection = {{ weather_data.wind_direction }};
+        const svg = d3.select("#windGauge"),
+              width = +svg.attr("width"),
+              height = +svg.attr("height"),
+              radius = Math.min(width, height) / 2 - 20,
+              g = svg.append("g").attr("transform", `translate(${width / 2},${height / 2})`);
+
+        // Gradient background
+        const gradient = svg.append("defs")
+            .append("radialGradient")
+            .attr("id", "gaugeGradient")
+            .attr("cx", "50%")
+            .attr("cy", "50%")
+            .attr("r", "50%");
+        gradient.append("stop").attr("offset", "0%").attr("stop-color", "#eaf3fb");
+        gradient.append("stop").attr("offset", "100%").attr("stop-color", "#d1d9e6");
+
+        g.append("circle")
+            .attr("r", radius + 10)
+            .attr("fill", "url(#gaugeGradient)")
+            .attr("stroke", "#ccc")
+            .attr("stroke-width", 1);
+
+        // Directions
+        const directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+        directions.forEach((dir, i) => {
+            const angle = (i * 45) * (Math.PI / 180);
+            const x = (radius - 20) * Math.sin(angle);
+            const y = -(radius - 20) * Math.cos(angle);
+            g.append("text")
+                .attr("x", x)
+                .attr("y", y)
+                .attr("text-anchor", "middle")
+                .attr("alignment-baseline", "middle")
+                .style("font-size", "16px")
+                .style("fill", "#555")
+                .text(dir);
+        });
+
+        // Animated arrow
+        const angle = windDirection * (Math.PI / 180);
+        const arrowLength = radius - 50;
+
+        g.append("line")
+            .attr("x1", 0)
+            .attr("y1", 0)
+            .attr("x2", 0)
+            .attr("y2", 0)
+            .attr("stroke", "#4caf50")
+            .attr("stroke-width", 10)
+            .attr("stroke-linecap", "round")
+            .transition()
+            .duration(1000)
+            .attr("x2", arrowLength * Math.sin(angle))
+            .attr("y2", -arrowLength * Math.cos(angle));
+
+        // Add arrowhead
+        svg.append("defs").append("marker")
+            .attr("id", "arrowhead")
+            .attr("viewBox", "0 0 10 10")
+            .attr("refX", 5)
+            .attr("refY", 5)
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M 0 0 L 10 5 L 0 10 z")
+            .attr("fill", "#4caf50");
+
+        g.select("line").attr("marker-end", "url(#arrowhead)");
+
+        // Wind details
+        d3.select("#windDetails")
+            .text(`Wind: ${windSpeed} m/s, Direction: ${Math.round(windDirection)}°`);
+    </script>
+    </div>
+    {% endif %}
+</body>
+</html>
